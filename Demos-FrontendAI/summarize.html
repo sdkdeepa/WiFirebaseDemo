@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Text Summarization Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder@1.3.3/dist/universal-sentence-encoder.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        button:disabled {
+            background-color: #aaa;
+        }
+        #summaryOutput {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #a3e2dd;
+            border-radius: 4px;
+            min-height: 50px;
+            color: gray;
+        }
+    </style>
+</head>
+<body>
+    <h1>Text Summarization</h1>
+    <p>Paste your text below and click "Summarize".</p>
+    <textarea id="inputText" rows="10" placeholder="Enter text to summarize..."></textarea>
+    <br>
+    <button id="summarizeBtn">Summarize</button>
+    <div id="summaryOutput">Summary will appear here...</div>
+
+    <script>
+        const inputText = document.getElementById("inputText");
+        const summaryOutput = document.getElementById("summaryOutput");
+        const summarizeBtn = document.getElementById("summarizeBtn");
+
+        let model = null;
+        // Asynchronous function to load the Universal Sentence Encoder (USE) model
+        async function loadModel() {
+            // Check if the USE library is loaded properly on the window object
+            if (!window.use || !window.use.load) {
+                throw new Error("USE model not available.");
+            }
+            // Only load the model if it hasn't been loaded already (singleton pattern)
+            if (!model) {
+                summaryOutput.textContent = "Loading model...";
+            // Load the model asynchronously using TensorFlow.js
+                model = await window.use.load();
+            }
+            // Return the loaded (or previously loaded) model instance
+            return model;
+        }
+        /* The generateSummary(text, model) looks for the most "central" sentence — the one that's 
+            most similar to all the others. That becomes your summary. */
+
+        async function generateSummary(text, model) {
+            const sentences = text.split(".").map(s => s.trim()).filter(s => s !== "").slice(0, 10);
+            if (sentences.length === 0) {
+                return "No valid sentences found.";
+            }
+
+            const embeddings = await model.embed(sentences);
+            const embeddingsArray = await embeddings.array();
+
+            let bestSentence = sentences[0];
+            let bestSimilarity = -1;
+
+            for (let i = 0; i < sentences.length; i++) {
+                let similarity = 0;
+                for (let j = 0; j < sentences.length; j++) {
+                    if (i !== j) {
+                        similarity += cosineSimilarity(embeddingsArray[i], embeddingsArray[j]);
+                    }
+                }
+                if (sentences.length > 1) {
+                    similarity = similarity / (sentences.length - 1);
+                }
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity;
+                    bestSentence = sentences[i];
+                }
+            }
+
+            return bestSentence;
+        }
+        //Custom function that uses plain JavaScript arrays
+        function cosineSimilarity(a, b) {
+            let dot = 0, magA = 0, magB = 0;
+            for (let i = 0; i < a.length; i++) {
+                dot += a[i] * b[i];
+                magA += a[i] * a[i];
+                magB += b[i] * b[i];
+            }
+            return dot / (Math.sqrt(magA) * Math.sqrt(magB) || 1);
+        }
+
+        summarizeBtn.addEventListener("click", async () => {
+            const text = inputText.value.trim();
+            if (!text) {
+                summaryOutput.textContent = "Please enter some text first.";
+                return;
+            }
+
+            summarizeBtn.disabled = true;
+            summaryOutput.textContent = "Generating summary...";
+
+            try {
+                const model = await loadModel();
+                const summary = await generateSummary(text, model);
+                summaryOutput.textContent = summary || "Could not generate summary.";
+            } catch (err) {
+                console.error(err);
+                summaryOutput.textContent = "An error occurred during summarization.";
+            } finally {
+                summarizeBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
